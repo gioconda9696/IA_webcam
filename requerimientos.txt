@@ -1,0 +1,10 @@
+# Requerimientos contador de personas
+# Para la instalación usar: pip install -r requerimientos.txt
+
+
+ultralytics>=8.0.147
+imutils
+pytest-shutil
+numpy>=1.22.2
+opencv-python>=4.1.1
+gdown
