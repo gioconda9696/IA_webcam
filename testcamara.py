@@ -1,5 +1,9 @@
 import cv2
 import numpy as np
+import requests
+
+# URL de tu API PHP
+API_URL = "http://tu-servidor.com/api/contar_personas"
 
 # Cargar los nombres de las clases
 with open('coco.names', 'r') as f:
@@ -11,7 +15,7 @@ net.setPreferableBackend(cv2.dnn.DNN_BACKEND_OPENCV)
 net.setPreferableTarget(cv2.dnn.DNN_TARGET_CPU)
 
 # Inicializar la cámara
-cap = cv2.VideoCapture(0, cv2.CAP_DSHOW)  # Para usar DirectShow (Windows)
+cap = cv2.VideoCapture(0)
 
 # Lista para almacenar los rastreadores
 trackers = []
@@ -82,6 +86,8 @@ def iou(boxA, boxB):
     iou = interArea / float(boxAArea + boxBArea - interArea)
     return iou
 
+previous_count = 0
+
 while True:
     ret, frame = cap.read()
     if not ret:
@@ -110,7 +116,7 @@ while True:
                 added = True
                 break
         if not added:
-            tracker = cv2.TrackerKCF_create()
+            tracker = cv2.legacy.TrackerKCF_create()
             tracker.init(frame, (x, y, w, h))
             new_trackers.append(tracker)
 
@@ -118,6 +124,16 @@ while True:
 
     # Mostrar etiquetas y cajas
     draw_labels(frame, boxes, confidences, class_ids, idxs)
+
+    current_count = len(idxs)
+    if current_count != previous_count:
+        data = {'conteo_personas': current_count}
+        try:
+            response = requests.post(API_URL, json=data)
+            print(f"Enviado: {data}, Respuesta: {response.status_code}, {response.text}")
+        except Exception as e:
+            print(f"Error al enviar datos: {e}")
+        previous_count = current_count
 
     cv2.imshow('Frame', frame)
 
