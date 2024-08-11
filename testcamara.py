@@ -17,7 +17,7 @@ net.setPreferableBackend(cv2.dnn.DNN_BACKEND_OPENCV)
 net.setPreferableTarget(cv2.dnn.DNN_TARGET_CPU)
 
 # Inicializar la cámara
-cap = cv2.VideoCapture(0, cv2.CAP_DSHOW)  # Para usar DirectShow (Windows)
+cap = cv2.VideoCapture(0)  # Para usar DirectShow (Windows)
 
 # Lista para almacenar los rastreadores
 trackers = []
@@ -149,6 +149,8 @@ while True:
             print(f"Enviando: {data}")  # Imprimir datos antes de enviar
             response = requests.post(API_URL, json=data)
             print(f"Respuesta: {response.status_code}, {response.text}")
+            if response.status_code != 200:
+                print("Error en la respuesta del servidor.")
         except Exception as e:
             print(f"Error al enviar datos: {e}")
         previous_count = current_count
