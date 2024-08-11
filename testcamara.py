@@ -11,8 +11,8 @@ API_URL = "https://sistema.contadorpersonasuts.online/api/conteo"
 with open('coco.names', 'r') as f:
     classes = f.read().strip().split('\n')
 
-# Cargar el modelo YOLO
-net = cv2.dnn.readNetFromDarknet('yolov3.cfg', 'yolov3.weights')
+# Cargar el modelo Tiny YOLOv3
+net = cv2.dnn.readNetFromDarknet('yolov3-tiny.cfg', 'yolov3-tiny.weights')
 net.setPreferableBackend(cv2.dnn.DNN_BACKEND_OPENCV)
 net.setPreferableTarget(cv2.dnn.DNN_TARGET_CPU)
 
