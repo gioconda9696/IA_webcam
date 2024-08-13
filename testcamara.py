@@ -1,8 +1,8 @@
 import cv2
 import numpy as np
 import requests
-from datetime import datetime
-import time
+from datetime import datetime, timedelta
+from concurrent.futures import ThreadPoolExecutor
 
 # URL de tu API PHP
 API_URL = "https://sistema.contadorpersonasuts.online/api/conteo"
@@ -11,16 +11,23 @@ API_URL = "https://sistema.contadorpersonasuts.online/api/conteo"
 with open('coco.names', 'r') as f:
     classes = f.read().strip().split('\n')
 
-# Cargar el modelo Tiny YOLOv3
-net = cv2.dnn.readNetFromDarknet('yolov3-tiny.cfg', 'yolov3-tiny.weights')
+# Cargar el modelo YOLO
+net = cv2.dnn.readNetFromDarknet('yolov3.cfg', 'yolov3.weights')
 net.setPreferableBackend(cv2.dnn.DNN_BACKEND_OPENCV)
 net.setPreferableTarget(cv2.dnn.DNN_TARGET_CPU)
 
 # Inicializar la cámara
-cap = cv2.VideoCapture(0)  # Para usar DirectShow (Windows)
+cap = cv2.VideoCapture(1, cv2.CAP_DSHOW)  # Para usar DirectShow (Windows)
 
-# Lista para almacenar los rastreadores
-trackers = []
+# Inicializar el ThreadPoolExecutor
+executor = ThreadPoolExecutor(max_workers=2)
+
+# Intervalo de tiempo entre envíos al servidor
+send_interval = timedelta(seconds=10)  # Ajusta el intervalo según sea necesario
+last_send_time = datetime.min
+
+# Registro de detecciones previas
+detections = {}
 
 def get_objects(frame):
     height, width = frame.shape[:2]
@@ -75,26 +82,21 @@ def draw_labels(frame, boxes, confidences, class_ids, idxs):
         cv2.rectangle(frame, (x, y), (x + w, y + h), color, 2)
         cv2.putText(frame, label, (x, y - 5), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
 
-def iou(boxA, boxB):
-    xA = max(boxA[0], boxB[0])
-    yA = max(boxA[1], boxB[1])
-    xB = min(boxA[0] + boxA[2], boxB[0] + boxB[2])
-    yB = min(boxA[1] + boxA[3], boxB[1] + boxB[3])
+def send_data_to_server(data):
+    try:
+        print(f"Enviando: {data}")
+        response = requests.post(API_URL, json=data)
+        print(f"Respuesta: {response.status_code}, {response.text}")
+    except Exception as e:
+        print(f"Error al enviar datos: {e}")
 
-    interArea = max(0, xB - xA + 1) * max(0, yB - yA + 1)
-    boxAArea = boxA[2] * boxA[3]
-    boxBArea = boxB[2] * boxB[3]
-
-    iou = interArea / float(boxAArea + boxBArea - interArea)
-    return iou
-
-previous_count = 0
-last_sent_time = time.time()
-delay = 10  # Segundos para el temporizador
-
-# Umbral de cuadros para verificar la persistencia de la detección
-PERSISTENCE_THRESHOLD = 5
-frame_counter = 0
+def is_new_detection(x, y, w, h):
+    global detections
+    for (prev_x, prev_y, prev_w, prev_h, timestamp) in detections.values():
+        if (datetime.now() - timestamp) < send_interval:
+            if abs(prev_x - x) < w/2 and abs(prev_y - y) < h/2:
+                return False
+    return True
 
 while True:
     ret, frame = cap.read()
@@ -104,64 +106,29 @@ while True:
 
     boxes, confidences, class_ids, idxs = get_objects(frame)
 
-    # Filtrar rastreadores existentes por IOU
-    valid_trackers = []
-    for tracker in trackers:
-        success, box = tracker.update(frame)
-        if success:
-            valid_trackers.append((tracker, box))
-
-    # Actualizar los rastreadores existentes con las nuevas detecciones
-    new_trackers = []
-    used_boxes = []
-    for i in idxs:
-        (x, y, w, h) = boxes[i]
-        added = False
-        for tracker, box in valid_trackers:
-            if iou([x, y, w, h], box) > 0.5:  # Ajusta el umbral de IOU
-                new_trackers.append(tracker)
-                used_boxes.append(box)
-                added = True
-                break
-        if not added:
-            tracker = cv2.legacy.TrackerKCF_create()
-            tracker.init(frame, (x, y, w, h))
-            new_trackers.append(tracker)
-
-    trackers = new_trackers
-
     # Mostrar etiquetas y cajas (opcional para visualización)
     draw_labels(frame, boxes, confidences, class_ids, idxs)
 
-    current_count = len(idxs)
-    current_time = time.time()
+    current_time = datetime.now()
 
-    if current_count > previous_count:
-        frame_counter += 1
-    else:
-        frame_counter = 0
+    if (current_time - last_send_time) > send_interval:
+        last_send_time = current_time
+        for i, idx in enumerate(idxs):
+            (x, y, w, h) = boxes[idx]
+            if is_new_detection(x, y, w, h):
+                detections[idx] = (x, y, w, h, current_time)
+                data = {'created_at': current_time.strftime('%Y-%m-%d %H:%M:%S'), 'persona': f"Persona {i + 1}"}
+                executor.submit(send_data_to_server, data)
 
-    if frame_counter > PERSISTENCE_THRESHOLD and (current_time - last_sent_time) > delay:
-        # Obtener la fecha y hora actual
-        fecha_actual = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-        data = {'created_at': fecha_actual}
-        try:
-            print(f"Enviando: {data}")  # Imprimir datos antes de enviar
-            response = requests.post(API_URL, json=data)
-            print(f"Respuesta: {response.status_code}, {response.text}")
-            if response.status_code != 200:
-                print("Error en la respuesta del servidor.")
-        except Exception as e:
-            print(f"Error al enviar datos: {e}")
-        previous_count = current_count
-        last_sent_time = current_time
-        frame_counter = 0
+    # Limpiar detecciones antiguas
+    detections = {key: value for key, value in detections.items() if (current_time - value[4]) < send_interval}
 
-    # Eliminar la visualización del frame
-    # cv2.imshow('Frame', frame)
+    # Mostrar el frame
+    cv2.imshow('Frame', frame)
 
-    if cv2.waitKey(30) == ord('q'):  # Retraso de 30 ms entre cuadros
+    if cv2.waitKey(30) == ord('q'):
         break
 
 cap.release()
 cv2.destroyAllWindows()
+executor.shutdown()
