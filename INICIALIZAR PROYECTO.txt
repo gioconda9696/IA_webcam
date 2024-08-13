@@ -1,0 +1,35 @@
+INICIALIZAR PROYECTO
+
+sudo apt update
+sudo apt upgrade -y
+
+sudo apt install python3-venv -y
+
+
+cd /path/to/your/project
+python3 -m venv venv
+
+source venv/bin/activate
+
+pip install ultralytics>=8.0.147 imutils pytest-shutil numpy>=1.22.2 opencv-python>=4.1.1 gdown
+
+pip install -r requerimientos.txt
+
+
+
+///WINDOWS
+
+
+primero instalar anaconda
+conda create -n mi_entorno python=3.9
+
+conda activate mi_entorno
+
+
+conda install numpy opencv matplotlib
+pip install ultralytics imutils pytest-shutil gdown
+
+
+Python testcamara.py
+
+#cap = cv2.VideoCapture(0, cv2.CAP_DSHOW)  # Para usar DirectShow (Windows)
